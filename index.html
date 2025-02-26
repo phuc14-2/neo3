@@ -1,127 +1,206 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ứng dụng Theo dõi Chuyển động</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        canvas { display: none; }
-        video { border: 2px solid black; }
-        .controls { margin-top: 10px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ứng dụng Theo dõi Chuyển động</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      text-align: center;
+      background: url('https://i.pinimg.com/originals/55/01/60/5501609ee45d514d1f2c4a63502045e2.gif') no-repeat center center fixed;
+      background-size: cover;
+      color: white;
+      margin: 0;
+      padding: 0;
+    }
+    h2 {
+      background: rgba(0, 0, 0, 0.6);
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+    .webcams {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .box {
+      border: 2px solid white;
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.4);
+    }
+    video, canvas {
+      border-radius: 10px;
+    }
+    .controls {
+      margin-top: 20px;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    input[type=range] {
+      margin: 5px;
+    }
+  </style>
 </head>
 <body>
-    <h2>Ứng dụng Theo dõi Chuyển động</h2>
-    <video id="video" width="640" height="480" autoplay></video>
-    <canvas id="canvas"></canvas>
-    <canvas id="motionCanvas" width="640" height="480" style="border: 2px solid blue;"></canvas>
-    <div class="controls">
-        <label>Diện tích viền tổng quát: <input type="range" id="areaRange" min="50" max="1000" value="200"></label>
-        <label>Độ nhạy: <input type="range" id="threshRange" min="5" max="50" value="15"></label>
-        <button onclick="startDetection()">Bắt đầu</button>
-        <button onclick="stopDetection()">Dừng</button>
+  <h2>Ứng dụng Theo dõi Chuyển động</h2>
+  <div class="webcams">
+    <!-- Ô webcam gốc -->
+    <div class="box">
+      <video id="video" width="320" height="240" autoplay></video>
     </div>
-    <p id="status">Trạng thái: Đang chờ</p>
-    <p id="fps">FPS: 0</p>
-    <script>
-        let video = document.getElementById("video");
-        let canvas = document.getElementById("canvas");
-        let motionCanvas = document.getElementById("motionCanvas");
-        let ctx = canvas.getContext("2d");
-        let motionCtx = motionCanvas.getContext("2d");
-        let running = false;
-        let minContourArea = 200;
-        let thresholdValue = 15;
-        let prevFrame = null;
-        let lastTime = performance.now();
-        let frameCount = 0;
-
-        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-            video.srcObject = stream;
-        }).catch(err => alert("Không thể truy cập camera"));
-
-        function startDetection() {
-            running = true;
-            document.getElementById("status").innerText = "Trạng thái: Đang hoạt động";
-            detectMotion();
+    <!-- Ô webcam xử lý (hiển thị khung chuyển động) -->
+    <div class="box">
+      <canvas id="motionCanvas" width="320" height="240" style="border: 2px solid blue;"></canvas>
+    </div>
+  </div>
+  <div class="controls">
+    <label>Diện tích viền tổng quát: <input type="range" id="areaRange" min="50" max="1000" value="200"></label>
+    <label>Độ nhạy: <input type="range" id="threshRange" min="5" max="50" value="15"></label>
+    <button onclick="startDetection()">Bắt đầu</button>
+    <button onclick="stopDetection()">Dừng</button>
+  </div>
+  <p id="status">Trạng thái: Đang chờ</p>
+  <p id="fps">FPS: 0</p>
+  <script>
+    let video = document.getElementById("video");
+    let motionCanvas = document.getElementById("motionCanvas");
+    let motionCtx = motionCanvas.getContext("2d");
+    let running = false;
+    let minContourArea = 200;
+    let thresholdValue = 15;
+    let prevFrame = null;
+    let lastTime = performance.now();
+    let frameCount = 0;
+    
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      video.srcObject = stream;
+    }).catch(err => alert("Không thể truy cập camera"));
+    
+    function startDetection() {
+      running = true;
+      document.getElementById("status").innerText = "Trạng thái: Đang hoạt động";
+      detectMotion();
+    }
+    
+    function stopDetection() {
+      running = false;
+      document.getElementById("status").innerText = "Trạng thái: Đã dừng";
+    }
+    
+    function detectMotion() {
+      if (!running) return;
+      
+      // Cập nhật kích thước canvas theo video
+      motionCanvas.width = video.videoWidth;
+      motionCanvas.height = video.videoHeight;
+      
+      // Vẽ khung hình từ video lên canvas
+      motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+      
+      // Lấy dữ liệu ảnh từ canvas để xử lý
+      let frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+      let grayFrame = convertToGrayscale(frame);
+      
+      if (prevFrame) {
+        let deltaFrame = computeFrameDifference(grayFrame, prevFrame);
+        let motionDetected = detectContours(deltaFrame);
+        document.getElementById("status").innerText = `Motion: ${motionDetected ? "YES" : "NO"}`;
+      }
+      
+      prevFrame = grayFrame;
+      updateFPS();
+      requestAnimationFrame(detectMotion);
+    }
+    
+    function convertToGrayscale(frame) {
+      let gray = new Uint8ClampedArray(frame.data.length / 4);
+      for (let i = 0; i < gray.length; i++) {
+        let r = frame.data[i * 4];
+        let g = frame.data[i * 4 + 1];
+        let b = frame.data[i * 4 + 2];
+        gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+      }
+      return gray;
+    }
+    
+    function computeFrameDifference(frame1, frame2) {
+      let diff = new Uint8ClampedArray(frame1.length);
+      for (let i = 0; i < frame1.length; i++) {
+        diff[i] = Math.abs(frame1[i] - frame2[i]) > thresholdValue ? 255 : 0;
+      }
+      return diff;
+    }
+    
+    // Cập nhật hàm detectContours để quét toàn bộ pixel và xác định vùng di chuyển
+    function detectContours(deltaFrame) {
+      let width = motionCanvas.width;
+      let height = motionCanvas.height;
+      let minX = width, minY = height, maxX = 0, maxY = 0;
+      let count = 0;
+      
+      // Duyệt qua từng pixel
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let idx = y * width + x;
+          if (deltaFrame[idx] === 255) {
+            count++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
         }
-
-        function stopDetection() {
-            running = false;
-            document.getElementById("status").innerText = "Trạng thái: Đã dừng";
-        }
-
-        function detectMotion() {
-            if (!running) return;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            motionCanvas.width = video.videoWidth;
-            motionCanvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            let grayFrame = convertToGrayscale(frame);
-            
-            if (prevFrame) {
-                let deltaFrame = computeFrameDifference(grayFrame, prevFrame);
-                let motionDetected = detectContours(deltaFrame);
-                document.getElementById("status").innerText = `Motion: ${motionDetected ? "YES" : "NO"}`;
-            }
-            prevFrame = grayFrame;
-            updateFPS();
-            requestAnimationFrame(detectMotion);
-        }
-
-        function convertToGrayscale(frame) {
-            let gray = new Uint8ClampedArray(frame.data.length / 4);
-            for (let i = 0; i < gray.length; i++) {
-                let r = frame.data[i * 4];
-                let g = frame.data[i * 4 + 1];
-                let b = frame.data[i * 4 + 2];
-                gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
-            }
-            return gray;
-        }
-
-        function computeFrameDifference(frame1, frame2) {
-            let diff = new Uint8ClampedArray(frame1.length);
-            for (let i = 0; i < frame1.length; i++) {
-                diff[i] = Math.abs(frame1[i] - frame2[i]) > thresholdValue ? 255 : 0;
-            }
-            return diff;
-        }
-
-        function detectContours(deltaFrame) {
-            let motionDetected = false;
-            let count = 0;
-            motionCtx.clearRect(0, 0, motionCanvas.width, motionCanvas.height);
-            motionCtx.strokeStyle = "green";
-            motionCtx.lineWidth = 2;
-            
-            for (let i = 0; i < deltaFrame.length; i++) {
-                if (deltaFrame[i] === 255) count++;
-                if (count > minContourArea) {
-                    motionDetected = true;
-                    motionCtx.strokeRect(100, 100, 200, 200);
-                    break;
-                }
-            }
-            return motionDetected;
-        }
-
-        function updateFPS() {
-            frameCount++;
-            let now = performance.now();
-            let elapsed = now - lastTime;
-            if (elapsed >= 1000) {
-                document.getElementById("fps").innerText = `FPS: ${(frameCount / (elapsed / 1000)).toFixed(1)}`;
-                frameCount = 0;
-                lastTime = now;
-            }
-        }
-
-        document.getElementById("areaRange").addEventListener("input", e => minContourArea = parseInt(e.target.value));
-        document.getElementById("threshRange").addEventListener("input", e => thresholdValue = parseInt(e.target.value));
-    </script>
+      }
+      
+      // Xóa canvas trước khi vẽ khung mới
+      motionCtx.clearRect(0, 0, width, height);
+      
+      // Vẽ lại khung hình gốc
+      motionCtx.drawImage(video, 0, 0, width, height);
+      
+      motionCtx.strokeStyle = "blue";
+      motionCtx.lineWidth = 2;
+      
+      if (count > minContourArea) {
+        let rectWidth = maxX - minX;
+        let rectHeight = maxY - minY;
+        motionCtx.strokeRect(minX, minY, rectWidth, rectHeight);
+        return true;
+      }
+      return false;
+    }
+    
+    function updateFPS() {
+      frameCount++;
+      let now = performance.now();
+      let elapsed = now - lastTime;
+      if (elapsed >= 1000) {
+        document.getElementById("fps").innerText = `FPS: ${(frameCount / (elapsed / 1000)).toFixed(1)}`;
+        frameCount = 0;
+        lastTime = now;
+      }
+    }
+    
+    document.getElementById("areaRange").addEventListener("input", e => minContourArea = parseInt(e.target.value));
+    document.getElementById("threshRange").addEventListener("input", e => thresholdValue = parseInt(e.target.value));
+  </script>
 </body>
 </html>
