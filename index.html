@@ -84,7 +84,7 @@
     let motionCanvas = document.getElementById("motionCanvas");
     let motionCtx = motionCanvas.getContext("2d");
     let running = false;
-    let minContourArea = 200;
+    let minContourArea = 200; // ngưỡng pixel cho vùng chuyển động tổng quát
     let thresholdValue = 15;
     let prevFrame = null;
     let lastTime = performance.now();
@@ -112,7 +112,7 @@
       motionCanvas.width = video.videoWidth;
       motionCanvas.height = video.videoHeight;
       
-      // Vẽ khung hình từ video lên canvas
+      // Vẽ hình ảnh video lên canvas
       motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
       
       // Lấy dữ liệu ảnh từ canvas để xử lý
@@ -149,40 +149,81 @@
       return diff;
     }
     
-    // Cập nhật hàm detectContours để quét toàn bộ pixel và xác định vùng di chuyển
+    // Hàm phát hiện các vùng chuyển động bằng connected component labeling
     function detectContours(deltaFrame) {
       let width = motionCanvas.width;
       let height = motionCanvas.height;
-      let minX = width, minY = height, maxX = 0, maxY = 0;
-      let count = 0;
+      let visited = new Uint8Array(width * height);
+      let boxes = [];
+      let componentThreshold = 50; // ngưỡng pixel cho mỗi vùng nhỏ
       
       // Duyệt qua từng pixel
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           let idx = y * width + x;
-          if (deltaFrame[idx] === 255) {
-            count++;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+          if (deltaFrame[idx] === 255 && !visited[idx]) {
+            let stack = [idx];
+            visited[idx] = 1;
+            let minX = x, maxX = x, minY = y, maxY = y;
+            let count = 0;
+            while (stack.length > 0) {
+              let current = stack.pop();
+              let cx = current % width;
+              let cy = Math.floor(current / width);
+              count++;
+              if (cx < minX) minX = cx;
+              if (cx > maxX) maxX = cx;
+              if (cy < minY) minY = cy;
+              if (cy > maxY) maxY = cy;
+              
+              // Kiểm tra 4 hướng kề (4-connected)
+              let neighbors = [];
+              if (cx > 0) neighbors.push(current - 1);
+              if (cx < width - 1) neighbors.push(current + 1);
+              if (cy > 0) neighbors.push(current - width);
+              if (cy < height - 1) neighbors.push(current + width);
+              
+              for (let n of neighbors) {
+                if (!visited[n] && deltaFrame[n] === 255) {
+                  visited[n] = 1;
+                  stack.push(n);
+                }
+              }
+            }
+            if (count >= componentThreshold) {
+              boxes.push({minX, minY, maxX, maxY});
+            }
           }
         }
       }
       
-      // Xóa canvas trước khi vẽ khung mới
+      // Xóa canvas và vẽ lại hình ảnh gốc
       motionCtx.clearRect(0, 0, width, height);
-      
-      // Vẽ lại khung hình gốc
       motionCtx.drawImage(video, 0, 0, width, height);
       
-      motionCtx.strokeStyle = "blue";
-      motionCtx.lineWidth = 2;
+      // Vẽ các ô nhỏ (đường viền đỏ) cho từng vùng chuyển động
+      for (let box of boxes) {
+        let rectWidth = box.maxX - box.minX;
+        let rectHeight = box.maxY - box.minY;
+        motionCtx.strokeStyle = "red";
+        motionCtx.lineWidth = 2;
+        motionCtx.strokeRect(box.minX, box.minY, rectWidth, rectHeight);
+      }
       
-      if (count > minContourArea) {
-        let rectWidth = maxX - minX;
-        let rectHeight = maxY - minY;
-        motionCtx.strokeRect(minX, minY, rectWidth, rectHeight);
+      // Nếu có vùng chuyển động, vẽ thêm ô lớn (đường viền xanh) bao quanh tất cả các ô nhỏ
+      if (boxes.length > 0) {
+        let overallMinX = width, overallMinY = height, overallMaxX = 0, overallMaxY = 0;
+        for (let box of boxes) {
+          if (box.minX < overallMinX) overallMinX = box.minX;
+          if (box.minY < overallMinY) overallMinY = box.minY;
+          if (box.maxX > overallMaxX) overallMaxX = box.maxX;
+          if (box.maxY > overallMaxY) overallMaxY = box.maxY;
+        }
+        let overallWidth = overallMaxX - overallMinX;
+        let overallHeight = overallMaxY - overallMinY;
+        motionCtx.strokeStyle = "blue";
+        motionCtx.lineWidth = 2;
+        motionCtx.strokeRect(overallMinX, overallMinY, overallWidth, overallHeight);
         return true;
       }
       return false;
