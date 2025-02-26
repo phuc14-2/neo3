@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ứng dụng Theo dõi Chuyển động</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        canvas { display: none; }
+        video { border: 2px solid black; }
+        .controls { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h2>Ứng dụng Theo dõi Chuyển động</h2>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas"></canvas>
+    <canvas id="motionCanvas" width="640" height="480" style="border: 2px solid blue;"></canvas>
+    <div class="controls">
+        <label>Diện tích viền tổng quát: <input type="range" id="areaRange" min="50" max="1000" value="200"></label>
+        <label>Độ nhạy: <input type="range" id="threshRange" min="5" max="50" value="15"></label>
+        <button onclick="startDetection()">Bắt đầu</button>
+        <button onclick="stopDetection()">Dừng</button>
+    </div>
+    <p id="status">Trạng thái: Đang chờ</p>
+    <p id="fps">FPS: 0</p>
+    <script>
+        let video = document.getElementById("video");
+        let canvas = document.getElementById("canvas");
+        let motionCanvas = document.getElementById("motionCanvas");
+        let ctx = canvas.getContext("2d");
+        let motionCtx = motionCanvas.getContext("2d");
+        let running = false;
+        let minContourArea = 200;
+        let thresholdValue = 15;
+        let prevFrame = null;
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            video.srcObject = stream;
+        }).catch(err => alert("Không thể truy cập camera"));
+
+        function startDetection() {
+            running = true;
+            document.getElementById("status").innerText = "Trạng thái: Đang hoạt động";
+            detectMotion();
+        }
+
+        function stopDetection() {
+            running = false;
+            document.getElementById("status").innerText = "Trạng thái: Đã dừng";
+        }
+
+        function detectMotion() {
+            if (!running) return;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            motionCanvas.width = video.videoWidth;
+            motionCanvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let grayFrame = convertToGrayscale(frame);
+            
+            if (prevFrame) {
+                let deltaFrame = computeFrameDifference(grayFrame, prevFrame);
+                let motionDetected = detectContours(deltaFrame);
+                document.getElementById("status").innerText = `Motion: ${motionDetected ? "YES" : "NO"}`;
+            }
+            prevFrame = grayFrame;
+            updateFPS();
+            requestAnimationFrame(detectMotion);
+        }
+
+        function convertToGrayscale(frame) {
+            let gray = new Uint8ClampedArray(frame.data.length / 4);
+            for (let i = 0; i < gray.length; i++) {
+                let r = frame.data[i * 4];
+                let g = frame.data[i * 4 + 1];
+                let b = frame.data[i * 4 + 2];
+                gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+            }
+            return gray;
+        }
+
+        function computeFrameDifference(frame1, frame2) {
+            let diff = new Uint8ClampedArray(frame1.length);
+            for (let i = 0; i < frame1.length; i++) {
+                diff[i] = Math.abs(frame1[i] - frame2[i]) > thresholdValue ? 255 : 0;
+            }
+            return diff;
+        }
+
+        function detectContours(deltaFrame) {
+            let motionDetected = false;
+            let count = 0;
+            motionCtx.clearRect(0, 0, motionCanvas.width, motionCanvas.height);
+            motionCtx.strokeStyle = "green";
+            motionCtx.lineWidth = 2;
+            
+            for (let i = 0; i < deltaFrame.length; i++) {
+                if (deltaFrame[i] === 255) count++;
+                if (count > minContourArea) {
+                    motionDetected = true;
+                    motionCtx.strokeRect(100, 100, 200, 200);
+                    break;
+                }
+            }
+            return motionDetected;
+        }
+
+        function updateFPS() {
+            frameCount++;
+            let now = performance.now();
+            let elapsed = now - lastTime;
+            if (elapsed >= 1000) {
+                document.getElementById("fps").innerText = `FPS: ${(frameCount / (elapsed / 1000)).toFixed(1)}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+        }
+
+        document.getElementById("areaRange").addEventListener("input", e => minContourArea = parseInt(e.target.value));
+        document.getElementById("threshRange").addEventListener("input", e => thresholdValue = parseInt(e.target.value));
+    </script>
+</body>
+</html>
